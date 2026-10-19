@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Snake Battle Online</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#07111f;color:#eef6ff;font-family:system-ui,sans-serif;text-align:center}
+header{padding:10px 8px;background:#0d1b30;border-bottom:1px solid #1e4063}h1{margin:0;font-size:22px;color:#55f28a}p{margin:5px 0;font-size:13px;color:#b8c9dc}
+.top{display:flex;gap:7px;justify-content:center;align-items:center;flex-wrap:wrap;padding:8px}
+input,button{border:1px solid #355675;border-radius:10px;padding:10px;background:#10243a;color:white;font-size:15px}
+button{background:#0c8d58;border:0;font-weight:bold;cursor:pointer}
+#status{font-size:13px;color:#facc15;padding:3px}
+#board{display:block;width:min(96vw,800px);height:auto;aspect-ratio:1/1;margin:0 auto;border:2px solid #1d4971;border-radius:12px;background:#061326;touch-action:none}
+#scores{max-width:800px;margin:8px auto;padding:8px;display:flex;gap:7px;justify-content:center;flex-wrap:wrap}
+.tag{background:#11243a;border:1px solid #254563;border-radius:9px;padding:6px 9px;font-size:13px}
+.controls{display:flex;gap:12px;justify-content:center;align-items:center;margin:8px auto 18px}
+.controls button{width:62px;height:52px;font-size:22px;background:#17395b;border:1px solid #4e789d}
+#help{max-width:800px;margin:0 auto 18px;color:#9fb6cf;font-size:12px;padding:0 12px}
+</style>
+</head>
+<body>
+<header><h1>🐍 Snake Battle Online</h1><p>খাবার খাও • বড় হও • সবার সঙ্গে অনলাইনে খেলো</p></header>
+<div class="top">
+<input id="name" maxlength="14" placeholder="তোমার নাম" value="Player">
+<input id="server" style="width:min(65vw,320px)" placeholder="সার্ভার ঠিকানা (যেমন wss://...)">
+<button id="connect">অনলাইনে যুক্ত হও</button>
+</div>
+<div id="status">প্রথমে গেম সার্ভারের ঠিকানা লিখে যুক্ত হও।</div>
+<canvas id="board" width="600" height="600"></canvas>
+<div id="scores"></div>
+<div class="controls">
+<button id="up" aria-label="উপরে">⬆️</button>
+</div>
+<div class="controls">
+<button id="left" aria-label="বামে">⬅️</button><button id="down" aria-label="নিচে">⬇️</button><button id="right" aria-label="ডানে">➡️</button>
+</div>
+<div id="help">নিয়ন্ত্রণ: তীর বোতাম বা কিবোর্ডের ← ↑ → ↓। একই সার্ভার ঠিকানা ব্যবহার করলে সবাই একই গেমে খেলতে পারবে।<br>এই প্রোটোটাইপে সবাই একই রুমে যুক্ত হয়; ৪–৫ জনের বেশি খেলোয়াড়ও সমর্থন করার জন্য সার্ভার তৈরি করা হয়েছে।</div>
+<script>
+const canvas=document.getElementById('board'),ctx=canvas.getContext('2d');
+const statusEl=document.getElementById('status'),scoresEl=document.getElementById('scores');
+let ws=null, game=null, connected=false, dir={x:1,y:0};
+const colors=['#39ef82','#ff5555','#28a7ff','#ffc247','#bd72ff','#ff7bcb','#45e0df','#ff914d','#c3f35c','#f97316'];
+function send(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
+function setDir(x,y){if(x===-dir.x&&y===-dir.y)return;dir={x,y};send({type:'dir',x,y});}
+document.getElementById('up').onclick=()=>setDir(0,-1);
+document.getElementById('down').onclick=()=>setDir(0,1);
+document.getElementById('left').onclick=()=>setDir(-1,0);
+document.getElementById('right').onclick=()=>setDir(1,0);
+document.addEventListener('keydown',e=>{const k=e.key;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k))e.preventDefault();if(k==='ArrowUp')setDir(0,-1);if(k==='ArrowDown')setDir(0,1);if(k==='ArrowLeft')setDir(-1,0);if(k==='ArrowRight')setDir(1,0);});
+document.getElementById('connect').onclick=()=>{
+ let url=document.getElementById('server').value.trim();
+ if(!url && (location.protocol==='https:'||location.protocol==='http:')) {
+   url=(location.protocol==='https:'?'wss://':'ws://')+location.host;
+   document.getElementById('server').value=url;
+ }
+ if(!url){statusEl.textContent='সার্ভার ঠিকানা আগে লিখতে হবে।';return;}
+ try{if(ws)ws.close();ws=new WebSocket(url);}catch(e){statusEl.textContent='ঠিকানাটি সঠিক নয়।';return;}
+ statusEl.textContent='সার্ভারে যুক্ত হচ্ছে...';
+ ws.onopen=()=>{connected=true;send({type:'join',name:document.getElementById('name').value.trim()||'Player'});statusEl.textContent='অনলাইনে যুক্ত হয়েছ! অন্যদের যোগ দিতে একই সার্ভার ঠিকানা দাও।';};
+ ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.type==='state'){game=m;render();}if(m.type==='welcome')statusEl.textContent='তুমি খেলায় যুক্ত হয়েছ। আইডি: '+m.id;}catch{}};
+ ws.onerror=()=>statusEl.textContent='সংযোগে সমস্যা। সার্ভার চালু আছে কি না এবং ঠিকানা ঠিক কি না দেখো।';
+ ws.onclose=()=>{connected=false;statusEl.textContent='সংযোগ বিচ্ছিন্ন হয়েছে।';};
+};
+function render(){
+ ctx.clearRect(0,0,600,600);
+ ctx.fillStyle='#061326';ctx.fillRect(0,0,600,600);
+ ctx.strokeStyle='#102843';ctx.lineWidth=1;
+ for(let i=0;i<=600;i+=20){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,600);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(600,i);ctx.stroke();}
+ if(!game){ctx.fillStyle='#d9e8ff';ctx.textAlign='center';ctx.font='bold 24px sans-serif';ctx.fillText('অনলাইন গেমে স্বাগতম!',300,280);ctx.font='16px sans-serif';ctx.fillText('সার্ভারে যুক্ত হলে সাপ ও খাবার দেখা যাবে',300,315);return;}
+ const cell=20;
+ for(const f of game.food||[]){ctx.fillStyle='#ffd43b';ctx.beginPath();ctx.arc(f.x*cell+10,f.y*cell+10,7,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff2a6';ctx.stroke();}
+ (game.snakes||[]).forEach((s,i)=>{
+   if(!s.body||!s.body.length)return;const col=s.color||colors[i%colors.length];
+   s.body.forEach((p,j)=>{ctx.fillStyle=col;ctx.beginPath();ctx.roundRect(p.x*cell+1,p.y*cell+1,18,18,j===0?7:5);ctx.fill();if(j===0){ctx.fillStyle='#07111f';ctx.beginPath();ctx.arc(p.x*cell+6,p.y*cell+6,2,0,7);ctx.arc(p.x*cell+14,p.y*cell+6,2,0,7);ctx.fill();}});
+   ctx.fillStyle='#eaf5ff';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText(s.name||'Player',s.body[0].x*cell+10,s.body[0].y*cell-5);
+ });
+ scoresEl.innerHTML='';
+ [...(game.snakes||[])].sort((a,b)=>(b.score||0)-(a.score||0)).forEach((s,i)=>{const d=document.createElement('span');d.className='tag';d.textContent=`${i+1}. ${s.name}: ${s.score||0}`;scoresEl.appendChild(d);});
+}
+render();
+</script>
+</body>
+</html>
